@@ -2,18 +2,52 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>第二届高校杯 展示页面导航</title>
+  <title>第二届高校杯 展示导航</title>
   <style>
-    body { font-family: Arial; background: #111; color: white; text-align: center; padding-top: 50px; }
-    a { display: block; margin: 20px; font-size: 1.5em; color: #00ffff; text-decoration: none; }
-    a:hover { color: #ffcc00; }
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: 'Arial', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    h1 {
+      font-size: 2em;
+      color: #00ffff;
+      margin-bottom: 40px;
+    }
+    .nav-container {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      width: 300px;
+    }
+    .nav-link {
+      background-color: #003344;
+      padding: 15px;
+      border-radius: 8px;
+      color: #00ffff;
+      font-size: 1.2em;
+      text-decoration: none;
+      transition: 0.3s;
+    }
+    .nav-link:hover {
+      background-color: #005555;
+      color: #ffcc00;
+    }
   </style>
 </head>
 <body>
-  <h1>第二届高校杯 展示页面</h1>
-  <a href="TeamRankingsDisplay.html">📊 团体成绩展示</a>
-  <a href="IndividualRankingsDisplay.html">👤 个人成绩展示</a>
-  <a href="MatchUpsDisplay.html">🆚 对阵信息展示</a>
-  <a href="ResultsInputScrolling.html">📋 比赛结果展示</a>
+  <h1>第二届高校杯 展示页面导航</h1>
+  <div class="nav-container">
+    <a class="nav-link" href="TeamRankingsDisplay.html">📊 团体成绩展示</a>
+    <a class="nav-link" href="IndividualRankingsDisplay.html">👤 个人成绩展示</a>
+    <a class="nav-link" href="MatchUpsDisplay.html">🆚 对阵信息展示</a>
+    <a class="nav-link" href="ResultsInputScrolling.html">📋 比赛结果展示</a>
+  </div>
 </body>
 </html>
