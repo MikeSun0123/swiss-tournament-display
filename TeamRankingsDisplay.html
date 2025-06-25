@@ -1,0 +1,259 @@
+<<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>第二届“高校杯”团体成绩展示</title>
+  <style>
+    body {
+      background-color: black;
+      color: white;
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+
+    #banner {
+      display: block;
+      margin: 0 auto;
+      height: 120px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #00ffcc;
+      font-size: 2em;
+      margin: 10px 0;
+    }
+
+    .scroll-container {
+      height: 600px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .scroll-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 1.1em;
+    }
+
+    thead th {
+      background-color: #333;
+      border-bottom: 2px solid #00ffcc;
+      padding: 8px;
+      text-align: center;
+      font-size: 1.1em;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    td {
+      padding: 8px;
+      text-align: center;
+      border-bottom: 1px solid #444;
+    }
+
+    tr:nth-child(even) { background-color: #222; }
+    tr:nth-child(odd) { background-color: #111; }
+
+    .top-1 { background-color: gold !important; font-weight: bold; color: black; }
+    .top-2 { background-color: silver !important; font-weight: bold; color: black; }
+    .top-3 { background-color: #cd7f32 !important; font-weight: bold; color: black; }
+
+    .controls {
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    .controls button {
+      background-color: #003333;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      margin: 4px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9em;
+      opacity: 0.7;
+    }
+
+    .controls button:hover {
+      opacity: 1;
+    }
+
+    .top3-container {
+      display: none;
+    }
+
+    .top3-highlight {
+      margin: 20px auto;
+      font-size: 2.2em;
+      text-align: center;
+      font-weight: bold;
+      animation: glow 1.5s ease-in-out infinite alternate;
+    }
+
+    .top3-highlight:nth-child(1) { background: gold; color: #00f; }
+    .top3-highlight:nth-child(2) { background: silver; color: #00f; }
+    .top3-highlight:nth-child(3) { background: #cd7f32; color: #00f; }
+
+    @keyframes glow {
+      from { text-shadow: 0 0 10px #00f, 0 0 20px #0ff; }
+      to { text-shadow: 0 0 20px #0ff, 0 0 30px #0ff; }
+    }
+  </style>
+</head>
+<body>
+  <img id="banner" src="banner.png" alt="Banner">
+  <h1>第二届“高校杯”团体成绩展示</h1>
+
+  <!-- 表格展示 -->
+  <div class="scroll-container" id="table-container">
+    <table class="scroll-table" id="main-table">
+      <thead>
+        <tr>
+          <th>名次</th>
+          <th>校友会</th>
+          <th>第一对选手</th>
+          <th>第二对选手</th>
+          <th>局分累计</th>
+          <th>小分累计</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <!-- 前三名展示 -->
+  <div id="top3-container" class="top3-container"></div>
+
+  <!-- 控制按钮 -->
+  <div class="controls">
+    <button onclick="showTop3()">前三名</button>
+    <button onclick="showAll()">显示全部</button>
+    <button onclick="pauseScroll()">暂停</button>
+    <button onclick="resumeScroll()">继续</button>
+    <button id="music-toggle">🎵 音乐</button>
+  </div>
+
+  <audio id="bgm" src="bgmusic.mp3" preload="auto" loop></audio>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbz3PI3VZzvVnqhN5GMhk3InqCQWk4gZL2jBJN54spQnID9rUXHpGv_3WD6tTJa6ULg/exec";
+    const tbody = document.getElementById("table-body");
+    const tableContainer = document.getElementById("table-container");
+    const top3Container = document.getElementById("top3-container");
+    let allRows = [], currentMode = "all", animationFrame, paused = false;
+
+    async function loadData() {
+      const res = await fetch(API_URL);
+      const data = await res.json();
+const dataRows = data.rows.slice(1);  // 跳过字段名行
+allRows = dataRows.map(row => ({
+  rank: parseInt(row[7]),
+  school: row[0],
+  player1: row[2],
+  player2: row[4],
+  sumR: row[5],
+  total: row[6]
+}));
+      renderRows();
+      scrollLoop();
+    }
+
+    function renderRows() {
+      tbody.innerHTML = "";
+      tableContainer.style.display = "block";
+      top3Container.style.display = "none";
+
+      let rows = allRows.sort((a, b) => a.rank - b.rank);
+      rows.forEach(row => {
+        const tr = document.createElement("tr");
+        if (row.rank === 1) tr.classList.add("top-1");
+        else if (row.rank === 2) tr.classList.add("top-2");
+        else if (row.rank === 3) tr.classList.add("top-3");
+
+        [row.rank, row.school, row.player1, row.player2, row.sumR, row.total].forEach(cell => {
+          const td = document.createElement("td");
+          td.textContent = cell;
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    function showTop3() {
+      currentMode = "top3";
+      paused = true;
+      cancelAnimationFrame(animationFrame);
+      tableContainer.style.display = "none";
+      top3Container.style.display = "block";
+      top3Container.innerHTML = "";
+
+      const labels = ["冠军", "亚军", "季军"];
+      const top3 = [1, 2, 3].map(rank => allRows.find(row => row.rank === rank));
+
+      top3.forEach((row, i) => {
+        const div = document.createElement("div");
+        div.className = "top3-highlight";
+        if (row) {
+          div.textContent = `${labels[i]}：${row.school} ${row.player1} ${row.player2}`;
+        } else {
+          div.textContent = `${labels[i]}：暂无数据`;
+        }
+        top3Container.appendChild(div);
+      });
+    }
+
+    function showAll() {
+      currentMode = "all";
+      paused = false;
+      renderRows();
+    }
+
+    function pauseScroll() { paused = true; }
+    function resumeScroll() { paused = false; }
+
+    function scrollLoop() {
+      const container = document.querySelector(".scroll-container");
+      let scrollTop = 0;
+      const step = () => {
+        if (!paused && currentMode === "all") {
+          scrollTop += 1;
+          container.scrollTop = scrollTop;
+          if (scrollTop >= container.scrollHeight - container.clientHeight) {
+            scrollTop = 0;
+            container.scrollTop = 0;
+          }
+        }
+        animationFrame = requestAnimationFrame(step);
+      };
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(step);
+    }
+
+    // 音乐播放控制
+    window.addEventListener("DOMContentLoaded", () => {
+      const audio = document.getElementById("bgm");
+      const toggleBtn = document.getElementById("music-toggle");
+      const tryPlay = () => audio.play().catch(() => {});
+      document.body.addEventListener("click", tryPlay, { once: true });
+      document.body.addEventListener("touchstart", tryPlay, { once: true });
+
+      toggleBtn.addEventListener("click", () => {
+        if (audio.paused) {
+          audio.play();
+          toggleBtn.textContent = "⏸ 暂停音乐";
+        } else {
+          audio.pause();
+          toggleBtn.textContent = "🎵 音乐";
+        }
+      });
+    });
+
+    loadData();
+  </script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!-- 选手个人排名展示
+IndividualRankingsScrolling.html -->
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>个人排名展示</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: black;
+      color: white;
+      margin: 0;
+      padding: 20px;
+    }
+
+    #banner {
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+      height: 120px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #00ffcc;
+      font-size: 2em;
+      margin: 10px 0;
+    }
+
+    .fixed-header table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 1.1em;
+    }
+
+    .fixed-header th {
+      padding: 8px;
+      background-color: #333;
+      border-bottom: 2px solid #00ffcc;
+      min-width: 120px;
+      text-align: center;
+    }
+
+    .scroll-container {
+      height: 600px;
+      overflow: hidden;
+      position: relative;
+      margin-top: 0;
+    }
+
+    .scroll-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 1.1em;
+      position: relative;
+    }
+
+    td {
+      padding: 8px;
+      text-align: center;
+      border-bottom: 1px solid #444;
+      min-width: 120px;
+    }
+
+    tr:nth-child(even) { background-color: #222; }
+    tr:nth-child(odd) { background-color: #111; }
+
+    .top-1 { background-color: #ffd700 !important; font-weight: bold; color: black; }
+    .top-2 { background-color: #c0c0c0 !important; font-weight: bold; color: black; }
+    .top-3 { background-color: #cd7f32 !important; font-weight: bold; color: black; }
+
+    .controls {
+      position: fixed;
+      bottom: 20px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      z-index: 10;
+    }
+
+    .controls button {
+      margin: 5px;
+      padding: 6px 16px;
+      font-size: 1em;
+      background-color: #006666;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <img id="banner" src="banner.png" alt="Banner Image" />
+  <h1>个人排名展示</h1>
+
+  <div class="fixed-header">
+    <table>
+      <thead>
+        <tr>
+          <th>校友会</th>
+          <th>ID</th>
+          <th>选手姓名</th>
+          <th>局分合计</th>
+          <th>小分合计</th>
+          <th>名次</th>
+        </tr>
+      </thead>
+    </table>
+  </div>
+
+  <div class="scroll-container" id="scroll-container">
+    <table class="scroll-table">
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <div class="controls">
+    <button onclick="showTop(10)">前10名</button>
+    <button onclick="showTop(20)">前20名</button>
+    <button onclick="showAll()">显示全部</button>
+    <button onclick="pauseScroll()">暂停</button>
+    <button onclick="resumeScroll()">继续</button>
+    <button id="music-toggle">▶️ 音乐</button>
+  </div>
+
+  <audio id="bgm" src="bgmusic.mp3" preload="auto" loop></audio>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbzvZYwaxJnHxiKCmS-Heo6nE7N1-M3TX11I_rrGSV8OuFWrZ0ilT0nhXby4HnZ-jJI/exec";
+    let allRows = [];
+    let currentMode = 'all';
+    let isPaused = false;
+    let scrollContainer = null;
+    let scrollY = 0;
+    let animationFrameId = null;
+
+    async function loadData() {
+      const res = await fetch(API_URL);
+      const data = await res.json();
+      allRows = data.rows;
+      renderTable();
+      startScroll();
+    }
+
+    function getFilteredRows() {
+      if (currentMode === 'top10') return allRows.slice(0, 10);
+      if (currentMode === 'top20') return allRows.slice(0, 20);
+      return allRows;
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("table-body");
+      tbody.innerHTML = "";
+      const rows = getFilteredRows();
+
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+        const rank = row[5];
+        if (rank == 1) tr.classList.add("top-1");
+        else if (rank == 2) tr.classList.add("top-2");
+        else if (rank == 3) tr.classList.add("top-3");
+
+        row.forEach((cell) => {
+          const td = document.createElement("td");
+          td.textContent = cell;
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+
+      // 复制一份内容用于无缝滚动
+      tbody.innerHTML += tbody.innerHTML;
+    }
+
+    function scrollStep() {
+      if (!isPaused) {
+        scrollY += 1;
+        scrollContainer.scrollTop = scrollY;
+        if (scrollY >= scrollContainer.scrollHeight / 2) {
+          scrollY = 0;
+        }
+      }
+      animationFrameId = requestAnimationFrame(scrollStep);
+    }
+
+    function startScroll() {
+      cancelAnimationFrame(animationFrameId);
+      scrollY = 0;
+      scrollContainer.scrollTop = 0;
+      renderTable();
+      scrollStep();
+    }
+
+    function pauseScroll() {
+      isPaused = true;
+    }
+
+    function resumeScroll() {
+      isPaused = false;
+    }
+
+    function showTop(n) {
+      currentMode = n === 10 ? 'top10' : 'top20';
+      startScroll();
+    }
+
+    function showAll() {
+      currentMode = 'all';
+      startScroll();
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      scrollContainer = document.getElementById("scroll-container");
+
+      // 音乐控制
+      const audio = document.getElementById("bgm");
+      const toggleBtn = document.getElementById("music-toggle");
+
+      const tryPlay = () => audio.play().catch(() => {});
+      document.body.addEventListener("click", tryPlay, { once: true });
+      document.body.addEventListener("touchstart", tryPlay, { once: true });
+
+      toggleBtn.addEventListener("click", () => {
+        if (audio.paused) {
+          audio.play();
+          toggleBtn.textContent = "⏸ 暂停音乐";
+        } else {
+          audio.pause();
+          toggleBtn.textContent = "▶️ 播放音乐";
+        }
+      });
+
+      loadData();
+    });
+  </script>
+</body>
+</html>
+

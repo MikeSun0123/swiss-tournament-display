@@ -1,0 +1,220 @@
+
+ <!-- 动态滚动显示比赛结果 ResultsInputScrolling.html-->
+
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>比赛结果展示</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: black;
+      color: white;
+      margin: 0;
+      padding: 20px;
+    }
+
+    #banner {
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+      height: 120px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #00ffcc;
+      font-size: 2em;
+      margin: 10px 0;
+    }
+
+    /* 表头固定容器 */
+    .fixed-header table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 1.1em;
+    }
+
+    .fixed-header th {
+      padding: 8px;
+      background-color: #333;
+      border-bottom: 2px solid #00ffcc;
+      min-width: 120px;
+      text-align: center;
+    }
+
+    /* 滚动内容区域 */
+    .scroll-container {
+      height: 600px;
+      overflow: hidden;
+      position: relative;
+      margin-top: 0;
+    }
+
+    .scroll-content {
+      position: absolute;
+      animation: scrollUp 30s linear infinite;
+      width: 100%;
+    }
+
+    @keyframes scrollUp {
+      0% { top: 100%; }
+      100% { top: -100%; }
+    }
+
+    .scroll-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 1.1em;
+    }
+
+    td {
+      padding: 8px;
+      text-align: center;
+      border-bottom: 1px solid #444;
+      min-width: 120px;
+    }
+
+    tr:nth-child(even) { background-color: #222; }
+    tr:nth-child(odd) { background-color: #111; }
+
+    #music-toggle {
+      display: block;
+      margin: 20px auto 10px auto;
+      padding: 8px 20px;
+      font-size: 1em;
+      color: #fff;
+      background-color: #00aa88;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <img id="banner" src="banner.png" alt="Banner Image" />
+  <h1 id="round-title">加载中...</h1>
+
+  <!-- ✅ 表头固定显示 -->
+  <div class="fixed-header">
+    <table>
+      <thead>
+        <tr id="table-header"></tr>
+      </thead>
+    </table>
+  </div>
+
+  <!-- ✅ 滚动表体区域 -->
+  <div class="scroll-container">
+    <div class="scroll-content">
+      <table class="scroll-table">
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 背景音乐播放器 -->
+  <audio id="bgm" src="bgmusic.mp3" preload="auto" loop></audio>
+
+  <!-- 播放/暂停音乐按钮 -->
+  <button id="music-toggle">▶️</button>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbx8Xx9CGFVC7ShtBQ_tS8tmN9ipdxPQWouxro0cg16OZHVfjHdwxZvnZdPO2Z248Uc/exec";
+                                          //version 72: AKfycbyX6mP1ql9HY8ejxqdigcFeVmXz3XjmXrLY5iZ6NjhSo_7B4ORPR4pQPrLpK4oGN_g
+                                          //version 73: AKfycbx8Xx9CGFVC7ShtBQ_tS8tmN9ipdxPQWouxro0cg16OZHVfjHdwxZvnZdPO2Z248Uc                
+
+    const columnMap = {
+      "Match_ID": "轮次-桌号",
+      "PlayerA_ID": "东西方ID",
+      "PlayerA_Name": "东西座姓名",
+      "PlayerB_ID": "南北方ID",
+      "PlayerB_Name": "南北座姓名",
+      "ScoreA": "东西方得分",
+      "ScoreB": "南北方得分"
+    };
+
+    async function loadData() {
+      try {
+        const res = await fetch(API_URL);
+        const data = await res.json();
+
+        // 获取轮次
+        const firstRow = data.rows.find(r => r[0]);
+        let round = "?";
+        if (firstRow && typeof firstRow[0] === "string") {
+          const matchId = firstRow[0];
+          const match = matchId.match(/^R(\d+)_/);
+          if (match) round = match[1];
+        }
+        document.getElementById("round-title").textContent = `第 ${round} 轮比赛结果`;
+
+        // 表头
+        const thead = document.getElementById("table-header");
+        thead.innerHTML = "";
+        const headerNames = data.header;
+
+        headerNames.forEach((key, idx) => {
+          if (key === "Round") return;
+          const th = document.createElement("th");
+          th.textContent = columnMap[key] || key;
+          thead.appendChild(th);
+        });
+
+        // 表体
+        const tbody = document.getElementById("table-body");
+        tbody.innerHTML = "";
+        [...data.rows, ...data.rows].forEach(row => {
+          const tr = document.createElement("tr");
+          row.forEach((cell, idx) => {
+            if (headerNames[idx] === "Round") return;
+            const td = document.createElement("td");
+            td.textContent = cell;
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+
+      } catch (err) {
+        console.error("加载比赛数据失败：", err);
+        document.getElementById("round-title").textContent = "加载失败，请检查网络或数据源。";
+      }
+    }
+
+    // 运行一次 + 每 30 秒刷新
+    loadData();
+    setInterval(loadData, 30000);
+
+    // === 音乐播放控制（合并处理） ===
+    window.addEventListener("DOMContentLoaded", () => {
+      const audio = document.getElementById("bgm");
+      const toggleBtn = document.getElementById("music-toggle");
+
+      const tryPlay = () => {
+        audio.play().catch(() => {
+          console.log("用户交互前无法自动播放");
+        });
+      };
+
+      // 用户交互触发播放
+      document.body.addEventListener("click", tryPlay, { once: true });
+      document.body.addEventListener("touchstart", tryPlay, { once: true });
+
+      // 播放/暂停按钮逻辑
+      toggleBtn.addEventListener("click", () => {
+        if (audio.paused) {
+          audio.play();
+          toggleBtn.textContent = "⏸";
+        } else {
+          audio.pause();
+          toggleBtn.textContent = "▶️";
+        }
+      });
+    });
+  </script>
+</body>
+</html>
