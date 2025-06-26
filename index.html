@@ -69,23 +69,36 @@
     const toggleBtn = document.getElementById("music-toggle");
     const enterScreen = document.getElementById("enter-screen");
 
-    // 点击“进入”触发音乐播放
-    enterScreen.addEventListener("click", () => {
-      audio.play().catch(() => {});
-      enterScreen.style.display = "none";
-      toggleBtn.textContent = "⏸ 暂停音乐";
+    // 控制按钮文本
+    function updateButtonText() {
+      toggleBtn.textContent = audio.paused ? "▶️ 播放音乐" : "⏸ 暂停音乐";
+    }
+
+    // 用户点击进入页面后播放音乐
+    enterScreen.addEventListener("click", async () => {
+      try {
+        await audio.play();
+        enterScreen.style.display = "none";
+        updateButtonText();
+      } catch (err) {
+        console.error("自动播放失败：", err);
+      }
     });
 
-    // 音乐控制按钮
-    toggleBtn.addEventListener("click", () => {
-      if (audio.paused) {
-        audio.play();
-        toggleBtn.textContent = "⏸ 暂停音乐";
-      } else {
-        audio.pause();
-        toggleBtn.textContent = "▶️ 播放音乐";
+    // 播放/暂停按钮
+    toggleBtn.addEventListener("click", async () => {
+      try {
+        if (audio.paused) {
+          await audio.play();
+        } else {
+          audio.pause();
+        }
+        updateButtonText();
+      } catch (err) {
+        console.error("播放/暂停错误：", err);
       }
     });
   </script>
 </body>
 </html>
+
