@@ -2,137 +2,331 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <title>比赛对阵展示</title>
+  <title>对阵信息直播展示（当前轮）</title>
   <style>
-    /* 页面整体样式设置 */
-    body {
-      font-family: Arial, sans-serif;
-      background-color: black;
-      color: white;
-      margin: 0;
-      padding: 20px;
+    :root{
+      --duration-sec: 180s;                   /* 一圈滚动时长：首渲后按行数重写 */
+      --font-base: clamp(16px, 1.6vw, 22px);  /* 主体文字 */
+      --font-header: clamp(18px, 1.8vw, 26px);/* 标题/表头 */
+      --row-pad: 10px;                        /* 行上下留白 */
+      --banner-h: 100px;
+      --viewport-h: 600px;                    /* 大屏可调到 700~760 */
     }
 
-    /* Banner 图像样式 */
-    #banner {
-      display: block;
-      margin: 0 auto;
-      max-width: 100%;
-      height: 120px;
-    }
+    body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:20px; }
+    #banner { display:block; margin:0 auto 8px; max-width:100%; height:var(--banner-h); object-fit:contain; }
+    h1 { text-align:center; color:#00ffcc; font-size:var(--font-header); margin:6px 0 12px; }
 
-    /* 轮次标题 */
-    h1 {
-      text-align: center;
-      color: #00ffcc;
-      font-size: 2em;
-      margin: 10px 0;
-    }
+    .status { position:fixed; top:12px; right:12px; display:flex; gap:8px; align-items:center; font-size:.9em; }
+    .dot { width:10px; height:10px; border-radius:50%; background:#555; }
+    .dot.ok { background:#22c55e; } .dot.err { background:#ef4444; }
+    .status small { opacity:.8 }
 
-    /* 表格滚动区域样式 */
-    .scroll-container {
-      height: 600px;
-      overflow: hidden;
-      position: relative;
-      margin-top: 20px;
-    }
+    .fixed-header table{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:var(--font-base); }
+    .fixed-header th{ padding:8px; background:#222; border-bottom:2px solid #00ffcc; text-align:center;
+                      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-    /* 滚动动画容器 */
-    .scroll-content {
-      position: absolute;
-      animation: scrollUp 30s linear infinite;
-      width: 100%;
+    .scroll-viewport{ height:var(--viewport-h); overflow:hidden; position:relative; }
+    .scroller{
+      position:absolute; left:0; right:0; top:0; will-change:transform;
+      animation: scrollUp var(--duration-sec) linear infinite; /* 0% → -50% 无缝循环 */
+      animation-play-state: paused;  /* 初始暂停，首屏先稳定展示 */
     }
+    @keyframes scrollUp { from { transform: translateY(0); } to { transform: translateY(-50%); } }
 
-    /* 定义滚动动画：从下往上移动 */
-    @keyframes scrollUp {
-      0% { top: 100%; }
-      100% { top: -100%; }
-    }
+    table.live{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:var(--font-base); }
+    td{ padding:var(--row-pad); text-align:center; border-bottom:1px solid #333;
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    tr:nth-child(even){ background:#121212; } tr:nth-child(odd){ background:#0b0b0b; }
 
-    /* 表格样式 */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 1.2em;
-    }
-
-    th, td {
-      padding: 10px;
-      text-align: center;
-      border-bottom: 1px solid #444;
-    }
-
-    tr:nth-child(even) { background-color: #222; }
-    tr:nth-child(odd) { background-color: #111; }
+    #music-toggle{ display:block; margin:14px auto 8px; padding:8px 20px; font-size:1em; color:#fff;
+      background:#00aa88; border:none; border-radius:4px; cursor:pointer; }
+    .toolbar{ text-align:center; font-size:.95em; opacity:.85; }
   </style>
 </head>
 <body>
+  <div class="status"><div id="netDot" class="dot"></div><small id="statusText">连接中…</small></div>
 
-  <!-- 页面顶部 Banner 图 -->
-  <img id="banner" src="banner.png" alt="Banner Image" />
+  <img id="banner" src="banner.png" alt="Banner" />
+  <h1 id="roundTitle">加载中…</h1>
 
-  <!-- 动态轮次标题 -->
-  <h1 id="round-title">加载中...</h1>
+  <!-- 表头固定 -->
+  <div class="fixed-header">
+    <table><thead><tr id="theadRow"></tr></thead></table>
+  </div>
 
-  <!-- 滚动显示的比赛对阵表 -->
-  <div class="scroll-container">
-    <div class="scroll-content">
-      <table id="matchups-table">
-        <thead><tr id="table-header"></tr></thead>
-        <tbody id="table-body"></tbody>
-      </table>
+  <!-- 滚动主体：A/B 两份；不足一屏时在 A 内克隆补满，再镜像到 B -->
+  <div class="scroll-viewport">
+    <div id="scroller" class="scroller">
+      <table class="live"><tbody id="tbodyA"></tbody></table>
+      <table class="live"><tbody id="tbodyB"></tbody></table>
     </div>
   </div>
 
+  <!-- 背景音乐 -->
+  <audio id="bgm" src="bgmusic.mp3" preload="auto" loop></audio>
+  <button id="music-toggle">▶️ 播放音乐</button>
+
+  <div class="toolbar">
+    <span id="lastUpdate">上次更新：—</span>
+  </div>
+
   <script>
-    // 替换为你的 Web App URL（来自 ServeMatchupsScrolling.gs 中的 doGet）
-    const API_URL = "https://script.google.com/macros/s/AKfycby2yc88MjmKxpnXxmuefWjQt7QTuHZxKei5bBcIDS205SXIOchbTXbvyxcviq6Opk4/exec";
+    /* ===== 你的对阵 API ===== */
+    const MATCHUPS_API = "https://script.google.com/macros/s/AKfycby2yc88MjmKxpnXxmuefWjQt7QTuHZxKei5bBcIDS205SXIOchbTXbvyxcviq6Opk4/exec";
 
-    /**
-     * 载入比赛数据并更新页面内容
-     */
-    async function loadData() {
-      try {
-        const res = await fetch(API_URL);             // 获取 JSON 数据
-        const data = await res.json();                // 解析 JSON
+    /* ===== 刷新与速度参数 ===== */
+    const POLL_MS = 10000;    // 需要更“直播”可调 5000
+    const PER_ROW_SEC = 0.8;  // 每行滚动时间（越小越快）
+    const MIN_DURATION = 30;  // 一圈最少
+    const MAX_DURATION = 300; // 一圈最多
+    const FIRST_SCREEN_MS = 800; // 首屏停留时长，再开始滚动
 
-        // 设置轮次标题为 "第 N 轮对阵"
-        document.getElementById("round-title").textContent = `第 ${data.round} 轮对阵`;
+    /* ===== DOM refs ===== */
+    const url = new URL(location.href);
+    /*const roundParam = Number(url.searchParams.get("round")); // 可能 NaN（仅用于标题覆盖）*/
 
-        // 构建表头
-        const thead = document.getElementById("table-header");
-        thead.innerHTML = "";                         // 清空旧内容
-        data.header.forEach(title => {
-          const th = document.createElement("th");
-          th.textContent = title;
-          thead.appendChild(th);
-        });
+    const roundParamStr = url.searchParams.get("round");
+    const roundParam = (roundParamStr && roundParamStr.trim() !== "") ? Number(roundParamStr) : NaN;
 
-        // 构建表体（滚动显示内容，复制两份形成循环）
-        const tbody = document.getElementById("table-body");
-        tbody.innerHTML = "";
-        [...data.rows, ...data.rows].forEach(row => {
-          const tr = document.createElement("tr");
-          row.forEach(cell => {
-            const td = document.createElement("td");
-            td.textContent = cell;
-            tr.appendChild(td);
-          });
-          tbody.appendChild(tr);
-        });
+   
 
-      } catch (err) {
-        console.error("加载比赛数据失败：", err);
-        document.getElementById("round-title").textContent = "加载失败，请检查网络或数据源。";
+     let roundFromHeader = NaN;
+
+    const netDot = document.getElementById("netDot");
+    const statusText = document.getElementById("statusText");
+    const lastUpdateEl = document.getElementById("lastUpdate");
+    const theadRow = document.getElementById("theadRow");
+    const tbodyA = document.getElementById("tbodyA");
+    const tbodyB = document.getElementById("tbodyB");
+    const roundTitle = document.getElementById("roundTitle");
+    const scroller = document.getElementById("scroller");
+    const viewport = document.querySelector(".scroll-viewport");
+
+    const trim = v => (v==null ? "" : String(v).trim());
+    function setNet(ok,msg){ netDot.className="dot "+(ok?"ok":"err"); statusText.textContent=msg||(ok?"在线":"重试中…"); }
+    function ts(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+
+    async function fetchJSON(u, tries=3, baseDelay=1200){
+      for(let i=0;i<tries;i++){
+        try{
+          const r = await fetch(u, {cache:"no-store"});
+          if(!r.ok) throw new Error(String(r.status));
+          setNet(true,"在线");
+          return await r.json();
+        }catch(e){
+          setNet(false,`重试 ${i+1}/${tries}`);
+          if(i===tries-1) throw e;
+          await new Promise(res=>setTimeout(res, baseDelay*(i+1)));
+        }
       }
     }
 
-    // 页面加载时立即执行
-    loadData();
+    /* ====== 解析：去掉开头全空行；第一行=表头；其后=数据 ====== */
+    function parsePayload(payload){
+      let rows = [];
+      if (payload && Array.isArray(payload.rows)) rows = payload.rows;
+      else if (payload && Array.isArray(payload.data)) rows = payload.data;
+      else if (Array.isArray(payload)) rows = payload;
+      else if (payload && Array.isArray(payload.table)) rows = payload.table;
+      else rows = [];
 
-    // 每 30 秒自动刷新数据
-    setInterval(loadData, 30000);
+      rows = rows.map(r => (Array.isArray(r) ? r.map(trim) : []));
+
+      // 剔除开头全空行（有时 API/表格会吞掉第1行空白）
+      while (rows.length && rows[0].every(c => c === "")) rows.shift();
+
+      if (!rows.length) return { header:[], rows:[] };
+      const header = rows[0];         // 现在第一行就是表头
+      const dataRows = rows.slice(1); // 数据
+      return { header, rows: dataRows };
+    }
+
+    // 从“表头文本”提取轮次（更鲁棒：先去空白）
+    function extractRoundFromHeader(headerCells){
+      for (const h of headerCells){
+        const s = trim(h).replace(/\s+/g,'');
+        if (!s) continue;
+        let m = s.match(/^第(\d+)轮$/);                               if (m) return Number(m[1]);
+        m = s.match(/(?:^|[^A-Za-z])Round(\d+)(?:[^A-Za-z]|$)/i);     if (m) return Number(m[1]);
+        m = s.match(/^R(\d+)$/i);                                     if (m) return Number(m[1]);
+      }
+      return NaN;
+    }
+
+    // 找“桌号/board/table/台号”列，用于首屏排序；找不到返回 -1
+    function findTableIndex(headerRaw){
+      const norm = s => trim(s).toLowerCase().replace(/\s+/g,'');
+      for (let i=0;i<headerRaw.length;i++){
+        const h = norm(headerRaw[i]);
+        if (h.includes('桌号') || h === 'table' || h === 'board' || h === '台号') return i;
+      }
+      return -1;
+    }
+
+    function buildHeader(headerRaw){
+      theadRow.innerHTML = "";
+      headerRaw.forEach(raw => {
+        const th = document.createElement("th");
+        th.textContent = trim(raw);        // 空就保持空白，不显示 Col#
+        theadRow.appendChild(th);
+      });
+    }
+
+    function createRow(headerRaw, row){
+      const tr = document.createElement("tr");
+      const id = row.join("|") || `${Date.now()}-${Math.random()}`; // 以整行内容拼作 ID
+      tr.dataset.id = id;
+      headerRaw.forEach((_, idx) => {
+        const td = document.createElement("td");
+        const v = row[idx];
+        td.textContent = (v==null || v==="") ? "—" : String(v);
+        td.dataset.col = String(idx);
+        tr.appendChild(td);
+      });
+      return tr;
+    }
+
+    // 不足一屏则在 A 内克隆直至满屏，再镜像到 B
+    function ensureFillAndMirror(){
+      const needH = viewport.clientHeight;
+      let guard = 0;
+      while (tbodyA.offsetHeight < needH && guard < 8) {
+        const snapshot = Array.from(tbodyA.children);
+        snapshot.forEach(tr => tbodyA.appendChild(tr.cloneNode(true)));
+        guard++;
+      }
+      tbodyB.innerHTML = "";
+      Array.from(tbodyA.children).forEach(tr => tbodyB.appendChild(tr.cloneNode(true)));
+    }
+
+    let headerRaw = [];
+    let started = false;
+    let pollTimer = null;
+
+    function updateTitle(){
+  const useRound =
+    (Number.isFinite(roundParam) && roundParam > 0) ? roundParam :
+    (Number.isFinite(roundFromHeader) && roundFromHeader > 0) ? roundFromHeader :
+    null;
+
+  roundTitle.textContent = (useRound != null)
+    ? `第 ${useRound} 轮对阵信息（直播）`
+    : `对阵信息（直播）`;
+}
+
+    function initialRender(_headerRaw, rows){
+      headerRaw = _headerRaw.slice();
+
+      // 每次（包括首渲）按表头提取轮次并更新标题
+      roundFromHeader = extractRoundFromHeader(headerRaw);
+      updateTitle();
+
+      // 构建表头
+      buildHeader(headerRaw);
+
+      // ——首屏排序：若识别到“桌号/board/table”列，升序展示，让画面从 1 开始——
+      const tIdx = findTableIndex(headerRaw);
+      if (tIdx >= 0) {
+        rows.sort((a,b)=>{
+          const na = Number(String(a[tIdx]||'').replace(/[^\d.-]/g,'')); 
+          const nb = Number(String(b[tIdx]||'').replace(/[^\d.-]/g,''));
+          if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+          return String(a[tIdx]||'').localeCompare(String(b[tIdx]||''));
+        });
+      }
+
+      // 构建表体
+      tbodyA.innerHTML = ""; tbodyB.innerHTML = "";
+      rows.forEach(r => tbodyA.appendChild(createRow(headerRaw, r)));
+      ensureFillAndMirror();
+
+      // 一圈时长
+      const doubled = Math.max(1, rows.length * 2);
+      const durationSec = Math.min(MAX_DURATION, Math.max(MIN_DURATION, Math.round(doubled * PER_ROW_SEC)));
+      scroller.style.setProperty('--duration-sec', durationSec + 's');
+
+      // ——首屏停留 & 从第一行开始——
+      scroller.style.transform = 'translateY(0)';
+      scroller.style.animationPlayState = 'paused';
+      setTimeout(()=>{ scroller.style.animationPlayState = 'running'; }, FIRST_SCREEN_MS);
+
+      started = true;
+      lastUpdateEl.textContent = `上次更新：${ts()}`;
+    }
+
+    // 行内补丁：更新所有副本（并保持与首屏相同的排序策略）
+    function patchRows(rows){
+      roundFromHeader = extractRoundFromHeader(headerRaw); // 保险：补丁时也保持标题正确
+      updateTitle();
+
+      const tIdx = findTableIndex(headerRaw);
+      if (tIdx >= 0) {
+        rows.sort((a,b)=>{
+          const na = Number(String(a[tIdx]||'').replace(/[^\d.-]/g,'')); 
+          const nb = Number(String(b[tIdx]||'').replace(/[^\d.-]/g,''));
+          if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+          return String(a[tIdx]||'').localeCompare(String(b[tIdx]||''));
+        });
+      }
+
+      rows.forEach(row=>{
+        const id = row.join("|");
+        headerRaw.forEach((_, idx)=>{
+          const newVal = String(row[idx] ?? "—");
+          document.querySelectorAll(`tr[data-id="${CSS.escape(id)}"] td[data-col="${idx}"]`).forEach(td=>{
+            if (td.textContent !== newVal) td.textContent = newVal;
+          });
+        });
+      });
+      lastUpdateEl.textContent = `上次更新：${ts()}`;
+    }
+
+    async function loadAndPatch(){
+      const payload = await fetchJSON(MATCHUPS_API);
+      const parsed  = parsePayload(payload);
+      const rawHeader = parsed.header;
+      const rows      = parsed.rows;
+
+      // ——每次拉取后都从表头解析轮次并更新标题——
+      roundFromHeader = extractRoundFromHeader(rawHeader);
+      updateTitle();
+
+      if (!started) initialRender(rawHeader, rows);
+      else          patchRows(rows);
+    }
+
+    function startPolling(){
+      if(pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async ()=>{
+        try{ await loadAndPatch(); setNet(true,"在线"); }
+        catch(e){ setNet(false,"重试中…"); }
+      }, POLL_MS);
+    }
+
+    // 音乐键（事件同步）
+    window.addEventListener("DOMContentLoaded", ()=>{
+      const audio = document.getElementById("bgm");
+      const btn = document.getElementById("music-toggle");
+      const sync = ()=>{ btn.textContent = audio.paused ? "▶️ 播放音乐" : "⏸ 暂停音乐"; };
+      const kick = ()=> audio.play().then(sync).catch(()=>{});
+
+      document.body.addEventListener("click", kick, { once:true });
+      document.body.addEventListener("touchstart", kick, { once:true });
+
+      btn.addEventListener("click", async ()=>{
+        try{ if(audio.paused) await audio.play(); else audio.pause(); } finally { sync(); }
+      });
+      audio.addEventListener("playing", sync);
+      audio.addEventListener("pause",   sync);
+      sync();
+    });
+
+    (async ()=>{
+      try{ await loadAndPatch(); setNet(true,"在线"); }
+      catch(e){ setNet(false,"初次加载失败"); }
+      startPolling();
+    })();
   </script>
 </body>
 </html>

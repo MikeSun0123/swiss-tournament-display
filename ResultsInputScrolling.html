@@ -1,220 +1,267 @@
-
- <!-- 动态滚动显示比赛结果 ResultsInputScrolling.html-->
-
 <!DOCTYPE html>
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <title>比赛结果展示</title>
+  <title>比赛结果直播展示（当前轮）</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: black;
-      color: white;
-      margin: 0;
-      padding: 20px;
-    }
+    :root { --duration-sec: 180s; } /* 首渲时按行数计算并固定，避免补丁时重启动画 */
+    body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:20px; }
+    #banner { display:block; margin:0 auto 6px; max-width:100%; height:100px; object-fit:contain; }
+    h1 { text-align:center; color:#00ffcc; font-size:2em; margin:6px 0 12px; }
 
-    #banner {
-      display: block;
-      margin: 0 auto;
-      max-width: 100%;
-      height: 120px;
-    }
+    .status { position:fixed; top:12px; right:12px; display:flex; gap:8px; align-items:center; font-size:.9em; }
+    .dot { width:10px; height:10px; border-radius:50%; background:#555; }
+    .dot.ok { background:#22c55e; }
+    .dot.err { background:#ef4444; }
+    .status small { opacity:.8 }
 
-    h1 {
-      text-align: center;
-      color: #00ffcc;
-      font-size: 2em;
-      margin: 10px 0;
-    }
+    .fixed-header table{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:1.05em; }
+    .fixed-header th{ padding:8px; background:#222; border-bottom:2px solid #00ffcc; text-align:center; }
 
-    /* 表头固定容器 */
-    .fixed-header table {
-      width: 100%;
-      table-layout: fixed;
-      border-collapse: collapse;
-      font-size: 1.1em;
+    .scroll-viewport{ height:600px; overflow:hidden; position:relative; }
+    .scroller{
+      position:absolute; left:0; right:0; top:0; will-change:transform;
+      animation: scrollUp var(--duration-sec) linear infinite;
+      /*animation-play-state: paused; 初始暂停，JS就绪后启动，避免首帧铺满 */
     }
+   /* .scroller.run{ animation-play-state: running; }*/
 
-    .fixed-header th {
-      padding: 8px;
-      background-color: #333;
-      border-bottom: 2px solid #00ffcc;
-      min-width: 120px;
-      text-align: center;
-    }
+    /* 从视窗正下方进入，到 -50%（A/B 两份的中点）无缝循环 */
+    @keyframes scrollUp { from { transform: translateY(0); } to { transform: translateY(-50%); } }
 
-    /* 滚动内容区域 */
-    .scroll-container {
-      height: 600px;
-      overflow: hidden;
-      position: relative;
-      margin-top: 0;
-    }
+    table.live{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:1.05em; }
+    td{ padding:8px; text-align:center; border-bottom:1px solid #333; }
+    tr:nth-child(even){ background:#121212; } tr:nth-child(odd){ background:#0b0b0b; }
 
-    .scroll-content {
-      position: absolute;
-      animation: scrollUp 30s linear infinite;
-      width: 100%;
-    }
-
-    @keyframes scrollUp {
-      0% { top: 100%; }
-      100% { top: -100%; }
-    }
-
-    .scroll-table {
-      width: 100%;
-      table-layout: fixed;
-      border-collapse: collapse;
-      font-size: 1.1em;
-    }
-
-    td {
-      padding: 8px;
-      text-align: center;
-      border-bottom: 1px solid #444;
-      min-width: 120px;
-    }
-
-    tr:nth-child(even) { background-color: #222; }
-    tr:nth-child(odd) { background-color: #111; }
-
-    #music-toggle {
-      display: block;
-      margin: 20px auto 10px auto;
-      padding: 8px 20px;
-      font-size: 1em;
-      color: #fff;
-      background-color: #00aa88;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
+    #music-toggle{ display:block; margin:14px auto 8px; padding:8px 20px; font-size:1em; color:#fff;
+      background:#00aa88; border:none; border-radius:4px; cursor:pointer; }
+    .toolbar{ text-align:center; font-size:.95em; opacity:.85; }
   </style>
 </head>
 <body>
+  <div class="status"><div id="netDot" class="dot"></div><small id="statusText">连接中…</small></div>
 
-  <img id="banner" src="banner.png" alt="Banner Image" />
-  <h1 id="round-title">加载中...</h1>
+  <img id="banner" src="banner.png" alt="Banner" />
+  <h1 id="roundTitle">加载中…</h1>
 
-  <!-- ✅ 表头固定显示 -->
   <div class="fixed-header">
-    <table>
-      <thead>
-        <tr id="table-header"></tr>
-      </thead>
-    </table>
+    <table><thead><tr id="theadRow"></tr></thead></table>
   </div>
 
-  <!-- ✅ 滚动表体区域 -->
-  <div class="scroll-container">
-    <div class="scroll-content">
-      <table class="scroll-table">
-        <tbody id="table-body"></tbody>
-      </table>
+  <!-- 滚动主体：A/B 两份内容（必要时在每份内再克隆行，确保填满视窗高度） -->
+  <div class="scroll-viewport">
+    <div id="scroller" class="scroller">
+      <table class="live"><tbody id="tbodyA"></tbody></table>
+      <table class="live"><tbody id="tbodyB"></tbody></table>
     </div>
   </div>
 
-  <!-- 背景音乐播放器 -->
   <audio id="bgm" src="bgmusic.mp3" preload="auto" loop></audio>
+  <button id="music-toggle">▶️ 播放音乐</button>
 
-  <!-- 播放/暂停音乐按钮 -->
-  <button id="music-toggle">▶️</button>
+  <div class="toolbar">
+    <span id="lastUpdate">上次更新：—</span>
+  </div>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbx8Xx9CGFVC7ShtBQ_tS8tmN9ipdxPQWouxro0cg16OZHVfjHdwxZvnZdPO2Z248Uc/exec";
-                                          //version 72: AKfycbyX6mP1ql9HY8ejxqdigcFeVmXz3XjmXrLY5iZ6NjhSo_7B4ORPR4pQPrLpK4oGN_g
-                                          //version 73: AKfycbx8Xx9CGFVC7ShtBQ_tS8tmN9ipdxPQWouxro0cg16OZHVfjHdwxZvnZdPO2Z248Uc                
+    // ===== 配置 =====
+    const PROD_API = "https://script.google.com/macros/s/AKfycbx8Xx9CGFVC7ShtBQ_tS8tmN9ipdxPQWouxro0cg16OZHVfjHdwxZvnZdPO2Z248Uc/exec";
+    const POLL_MS = 10000;            // 轮询周期（可调为 5000ms）
+    const PER_ROW_SEC = 0.8;          // 每行滚动时间（越小越快，可调 0.7~1.0）
+    const MIN_DURATION = 30;          // 一圈最少 30s（防过快）
+    const MAX_DURATION = 300;         // 一圈最多 5min
 
-    const columnMap = {
-      "Match_ID": "轮次-桌号",
-      "PlayerA_ID": "东西方ID",
-      "PlayerA_Name": "东西座姓名",
-      "PlayerB_ID": "南北方ID",
-      "PlayerB_Name": "南北座姓名",
-      "ScoreA": "东西方得分",
-      "ScoreB": "南北方得分"
+    const url = new URL(location.href);
+    let round = Number(url.searchParams.get("round")); // 可能为 NaN
+
+    // DOM
+    const netDot = document.getElementById("netDot");
+    const statusText = document.getElementById("statusText");
+    const lastUpdateEl = document.getElementById("lastUpdate");
+    const theadRow = document.getElementById("theadRow");
+    const tbodyA = document.getElementById("tbodyA");
+    const tbodyB = document.getElementById("tbodyB");
+    const roundTitle = document.getElementById("roundTitle");
+    const scroller = document.getElementById("scroller");
+    const viewport = document.querySelector(".scroll-viewport");
+
+    function setNet(ok,msg){ netDot.className="dot "+(ok?"ok":"err"); statusText.textContent=msg||(ok?"在线":"重试中…"); }
+    function ts(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+
+    // 列名映射（按你表头修饰）
+    const headerMap = {
+      "Match_ID":"轮次-桌号","PlayerA_ID":"东西ID","PlayerA_Name":"东西姓名",
+      "PlayerB_ID":"南北ID","PlayerB_Name":"南北姓名","ScoreA":"东西得分","ScoreB":"南北得分"
     };
 
-    async function loadData() {
-      try {
-        const res = await fetch(API_URL);
-        const data = await res.json();
+    let headerKeys = [];
+    let started = false;
+    let pollTimer = null;
 
-        // 获取轮次
-        const firstRow = data.rows.find(r => r[0]);
-        let round = "?";
-        if (firstRow && typeof firstRow[0] === "string") {
-          const matchId = firstRow[0];
-          const match = matchId.match(/^R(\d+)_/);
-          if (match) round = match[1];
+    async function fetchJSON(u, tries=3, baseDelay=1200){
+      for(let i=0;i<tries;i++){
+        try{
+          const r = await fetch(u, {cache:"no-store"});
+          if(!r.ok) throw new Error(String(r.status));
+          setNet(true,"在线");
+          return await r.json();
+        }catch(e){
+          setNet(false,`重试 ${i+1}/${tries}`);
+          if(i===tries-1) throw e;
+          await new Promise(res=>setTimeout(res, baseDelay*(i+1)));
         }
-        document.getElementById("round-title").textContent = `第 ${round} 轮比赛结果`;
-
-        // 表头
-        const thead = document.getElementById("table-header");
-        thead.innerHTML = "";
-        const headerNames = data.header;
-
-        headerNames.forEach((key, idx) => {
-          if (key === "Round") return;
-          const th = document.createElement("th");
-          th.textContent = columnMap[key] || key;
-          thead.appendChild(th);
-        });
-
-        // 表体
-        const tbody = document.getElementById("table-body");
-        tbody.innerHTML = "";
-        [...data.rows, ...data.rows].forEach(row => {
-          const tr = document.createElement("tr");
-          row.forEach((cell, idx) => {
-            if (headerNames[idx] === "Round") return;
-            const td = document.createElement("td");
-            td.textContent = cell;
-            tr.appendChild(td);
-          });
-          tbody.appendChild(tr);
-        });
-
-      } catch (err) {
-        console.error("加载比赛数据失败：", err);
-        document.getElementById("round-title").textContent = "加载失败，请检查网络或数据源。";
       }
     }
 
-    // 运行一次 + 每 30 秒刷新
-    loadData();
-    setInterval(loadData, 30000);
+    function detectRoundFromMatchID(id){
+      if(typeof id!=="string") return null;
+      const m = id.match(/^R(\d+)_/);
+      return m ? Number(m[1]) : null;
+    }
 
-    // === 音乐播放控制（合并处理） ===
-    window.addEventListener("DOMContentLoaded", () => {
-      const audio = document.getElementById("bgm");
-      const toggleBtn = document.getElementById("music-toggle");
+    function buildHeader(keys){
+      theadRow.innerHTML = "";
+      keys.forEach(k=>{
+        if(k==="Round") return;
+        const th = document.createElement("th");
+        th.textContent = headerMap[k] || k;
+        theadRow.appendChild(th);
+      });
+    }
 
-      const tryPlay = () => {
-        audio.play().catch(() => {
-          console.log("用户交互前无法自动播放");
+    function createRow(keys, row){
+      const tr = document.createElement("tr");
+      const id = String(row[0]);
+      tr.dataset.id = id;
+      keys.forEach((k,idx)=>{
+        if(k==="Round") return;
+        const td = document.createElement("td");
+        td.textContent = row[idx] ?? "—";
+        td.dataset.col = k;
+        tr.appendChild(td);
+      });
+      return tr;
+    }
+
+    // 若一份内容高度 < 视窗高度，则在该份内克隆行，直到 >= 视窗高度，再复制到 B
+    function ensureFillAndMirror(){
+      const needH = viewport.clientHeight;
+      let guard = 0;
+      while (tbodyA.offsetHeight < needH && guard < 8) { // 最多扩充8倍，防意外死循环
+        const snapshot = Array.from(tbodyA.children);   // 当前已有的行快照
+        snapshot.forEach(tr => {
+          tbodyA.appendChild(tr.cloneNode(true));
         });
-      };
+        guard++;
+      }
+      // B 始终镜像 A（保证 A/B 等高）
+      tbodyB.innerHTML = "";
+      Array.from(tbodyA.children).forEach(tr => tbodyB.appendChild(tr.cloneNode(true)));
+    }
 
-      // 用户交互触发播放
-      document.body.addEventListener("click", tryPlay, { once: true });
-      document.body.addEventListener("touchstart", tryPlay, { once: true });
+    function initialRender(keys, rows){
+      headerKeys = keys.slice();
+      buildHeader(headerKeys);
+      tbodyA.innerHTML = ""; tbodyB.innerHTML = "";
 
-      // 播放/暂停按钮逻辑
-      toggleBtn.addEventListener("click", () => {
-        if (audio.paused) {
-          audio.play();
-          toggleBtn.textContent = "⏸";
-        } else {
-          audio.pause();
-          toggleBtn.textContent = "▶️";
+      rows.forEach(r => tbodyA.appendChild(createRow(headerKeys, r)));
+
+      // 关键：保证 A 的高度 >= 视窗高度；再镜像到 B，实现无缝循环且无“黑屏”
+      ensureFillAndMirror();
+
+      // 按“唯一行数”（原始 rows.length）计算速度，更符合“每行 ~0.8s”的体感
+      const doubled = Math.max(1, rows.length * 2);
+      const durationSec = Math.min(MAX_DURATION, Math.max(MIN_DURATION, Math.round(doubled * PER_ROW_SEC)));
+      scroller.style.setProperty('--duration-sec', durationSec + 's');
+
+      // 延迟开启动画，让首帧从底部进入
+      //setTimeout(()=> scroller.classList.add('run'), 100);
+
+      started = true;
+      lastUpdateEl.textContent = `上次更新：${ts()}`;
+    }
+
+    // 行内补丁：更新所有克隆副本
+    function patchRows(keys, rows){
+      const colIndex = Object.create(null);
+      keys.forEach((k,i)=> colIndex[k]=i);
+
+      rows.forEach(r=>{
+        const id = String(r[colIndex["Match_ID"] || 0]);
+        for(const k of keys){
+          if(k==="Round") continue;
+          const i = colIndex[k];
+          const newVal = String(r[i] ?? "—");
+          document.querySelectorAll(`tr[data-id="${id}"] td[data-col="${k}"]`).forEach(td=>{
+            if(td.textContent !== newVal) td.textContent = newVal;
+          });
         }
       });
+
+      lastUpdateEl.textContent = `上次更新：${ts()}`;
+    }
+
+    async function loadAndPatch(){
+      const data = await fetchJSON(PROD_API);
+      const header = data.header || [];
+      let rows = Array.isArray(data.rows) ? data.rows : [];
+
+      // 自动识别当前轮（URL 未指定或无效时取最大轮）
+      const rIdx = header.indexOf("Round");
+      if (!Number.isFinite(round) || round <= 0) {
+        const rounds = rows
+          .map(r => rIdx >= 0 ? Number(r[rIdx]) : detectRoundFromMatchID(String(r[0])))
+          .filter(n => Number.isFinite(n));
+        round = rounds.length ? Math.max(...rounds) : 1;
+        url.searchParams.set("round", String(round));
+        history.replaceState(null, "", url.toString());
+      }
+
+      // 只显示当前轮
+      rows = (rIdx >= 0)
+        ? rows.filter(r => Number(r[rIdx]) === round)
+        : rows.filter(r => detectRoundFromMatchID(String(r[0])) === round);
+
+      if(!started){
+        initialRender(header, rows);
+      }else{
+        patchRows(header, rows);
+      }
+
+      document.getElementById("roundTitle").textContent = `第 ${round} 轮比赛结果（直播）`;
+    }
+
+    function startPolling(){
+      if(pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async ()=>{
+        try{ await loadAndPatch(); setNet(true,"在线"); }
+        catch(e){ setNet(false,"重试中…"); }
+      }, POLL_MS);
+    }
+
+    // 音乐键（事件同步）
+    window.addEventListener("DOMContentLoaded", ()=>{
+      const audio = document.getElementById("bgm");
+      const btn = document.getElementById("music-toggle");
+      const sync = ()=>{ btn.textContent = audio.paused ? "▶️ 播放音乐" : "⏸ 暂停音乐"; };
+      const kick = ()=> audio.play().then(sync).catch(()=>{});
+
+      document.body.addEventListener("click", kick, { once:true });
+      document.body.addEventListener("touchstart", kick, { once:true });
+
+      btn.addEventListener("click", async ()=>{
+        try{ if(audio.paused) await audio.play(); else audio.pause(); } finally { sync(); }
+      });
+      audio.addEventListener("playing", sync);
+      audio.addEventListener("pause",   sync);
+      sync();
     });
+
+    (async ()=>{
+      try{ await loadAndPatch(); setNet(true,"在线"); }
+      catch(e){ setNet(false,"初次加载失败"); }
+      startPolling();
+    })();
   </script>
 </body>
 </html>
