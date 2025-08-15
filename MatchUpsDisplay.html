@@ -2,17 +2,16 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <title>对阵信息直播展示（当前轮）</title>
+  <title>对阵信息展示（6列版）</title>
   <style>
     :root{
-      --duration-sec: 180s;                   /* 一圈滚动时长：首渲后按行数重写 */
-      --font-base: clamp(16px, 1.6vw, 22px);  /* 主体文字 */
-      --font-header: clamp(18px, 1.8vw, 26px);/* 标题/表头 */
-      --row-pad: 10px;                        /* 行上下留白 */
+      --duration-sec: 180s;
+      --font-base: clamp(16px, 1.6vw, 22px);
+      --font-header: clamp(18px, 1.8vw, 26px);
+      --row-pad: 10px;
       --banner-h: 100px;
-      --viewport-h: 600px;                    /* 大屏可调到 700~760 */
+      --viewport-h: 600px;
     }
-
     body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:20px; }
     #banner { display:block; margin:0 auto 8px; max-width:100%; height:var(--banner-h); object-fit:contain; }
     h1 { text-align:center; color:#00ffcc; font-size:var(--font-header); margin:6px 0 12px; }
@@ -29,8 +28,8 @@
     .scroll-viewport{ height:var(--viewport-h); overflow:hidden; position:relative; }
     .scroller{
       position:absolute; left:0; right:0; top:0; will-change:transform;
-      animation: scrollUp var(--duration-sec) linear infinite; /* 0% → -50% 无缝循环 */
-      animation-play-state: paused;  /* 初始暂停，首屏先稳定展示 */
+      animation: scrollUp var(--duration-sec) linear infinite;
+      animation-play-state: paused; /* 首屏先静止再滚动 */
     }
     @keyframes scrollUp { from { transform: translateY(0); } to { transform: translateY(-50%); } }
 
@@ -50,9 +49,16 @@
   <img id="banner" src="banner.png" alt="Banner" />
   <h1 id="roundTitle">加载中…</h1>
 
-  <!-- 表头固定 -->
+  <!-- 6列固定表头 -->
   <div class="fixed-header">
-    <table><thead><tr id="theadRow"></tr></thead></table>
+    <table><thead><tr id="theadRow">
+      <th>桌号</th>
+      <th>东/西 ID</th>
+      <th>东/西 姓名</th>
+      <th>VS</th>
+      <th>南/北 ID</th>
+      <th>南/北 姓名</th>
+    </tr></thead></table>
   </div>
 
   <!-- 滚动主体：A/B 两份；不足一屏时在 A 内克隆补满，再镜像到 B -->
@@ -63,7 +69,6 @@
     </div>
   </div>
 
-  <!-- 背景音乐 -->
   <audio id="bgm" src="bgmusic.mp3" preload="auto" loop></audio>
   <button id="music-toggle">▶️ 播放音乐</button>
 
@@ -72,31 +77,35 @@
   </div>
 
   <script>
-    /* ===== 你的对阵 API ===== */
+    /* ===== API ===== */
     const MATCHUPS_API = "https://script.google.com/macros/s/AKfycby2yc88MjmKxpnXxmuefWjQt7QTuHZxKei5bBcIDS205SXIOchbTXbvyxcviq6Opk4/exec";
 
-    /* ===== 刷新与速度参数 ===== */
-    const POLL_MS = 10000;    // 需要更“直播”可调 5000
-    const PER_ROW_SEC = 0.8;  // 每行滚动时间（越小越快）
-    const MIN_DURATION = 30;  // 一圈最少
-    const MAX_DURATION = 300; // 一圈最多
-    const FIRST_SCREEN_MS = 800; // 首屏停留时长，再开始滚动
+    /* ===== 速度参数 ===== */
+    const POLL_MS = 10000;
+    const PER_ROW_SEC = 0.8;
+    const MIN_DURATION = 30;
+    const MAX_DURATION = 300;
+    const FIRST_SCREEN_MS = 800;
 
-    /* ===== DOM refs ===== */
+    /* ===== 列索引（0起）——按你当前表结构：A C D (VS) G H ===== */
+    const COL_INDEX = {
+      table: 0,     // A: 桌号
+      p1Id:  2,     // C: 东/西 ID
+      p1Nm:  3,     // D: 东/西 姓名
+      // F 列是“VS”，这里直接用常量字符串，不从表里取
+      p2Id:  6,     // G: 南/北 ID
+      p2Nm:  7      // H: 南/北 姓名
+    };
+
+    /* ===== DOM ===== */
     const url = new URL(location.href);
-    /*const roundParam = Number(url.searchParams.get("round")); // 可能 NaN（仅用于标题覆盖）*/
-
     const roundParamStr = url.searchParams.get("round");
     const roundParam = (roundParamStr && roundParamStr.trim() !== "") ? Number(roundParamStr) : NaN;
-
-   
-
-     let roundFromHeader = NaN;
+    let roundFromHeader = NaN;
 
     const netDot = document.getElementById("netDot");
     const statusText = document.getElementById("statusText");
     const lastUpdateEl = document.getElementById("lastUpdate");
-    const theadRow = document.getElementById("theadRow");
     const tbodyA = document.getElementById("tbodyA");
     const tbodyB = document.getElementById("tbodyB");
     const roundTitle = document.getElementById("roundTitle");
@@ -122,7 +131,7 @@
       }
     }
 
-    /* ====== 解析：去掉开头全空行；第一行=表头；其后=数据 ====== */
+    /* 解析：剔除起始全空行；rows[0] 为表头，rows[1..] 为数据 */
     function parsePayload(payload){
       let rows = [];
       if (payload && Array.isArray(payload.rows)) rows = payload.rows;
@@ -130,58 +139,66 @@
       else if (Array.isArray(payload)) rows = payload;
       else if (payload && Array.isArray(payload.table)) rows = payload.table;
       else rows = [];
-
       rows = rows.map(r => (Array.isArray(r) ? r.map(trim) : []));
 
-      // 剔除开头全空行（有时 API/表格会吞掉第1行空白）
       while (rows.length && rows[0].every(c => c === "")) rows.shift();
-
       if (!rows.length) return { header:[], rows:[] };
-      const header = rows[0];         // 现在第一行就是表头
-      const dataRows = rows.slice(1); // 数据
+      const header = rows[0];
+      const dataRows = rows.slice(1);
       return { header, rows: dataRows };
     }
 
-    // 从“表头文本”提取轮次（更鲁棒：先去空白）
+    /* 从表头单元格中解析“第 N 轮 / Round N / R N” */
     function extractRoundFromHeader(headerCells){
       for (const h of headerCells){
         const s = trim(h).replace(/\s+/g,'');
         if (!s) continue;
-        let m = s.match(/^第(\d+)轮$/);                               if (m) return Number(m[1]);
-        m = s.match(/(?:^|[^A-Za-z])Round(\d+)(?:[^A-Za-z]|$)/i);     if (m) return Number(m[1]);
-        m = s.match(/^R(\d+)$/i);                                     if (m) return Number(m[1]);
+        let m = s.match(/^第(\d+)轮$/);                           if (m) return Number(m[1]);
+        m = s.match(/(?:^|[^A-Za-z])Round(\d+)(?:[^A-Za-z]|$)/i); if (m) return Number(m[1]);
+        m = s.match(/^R(\d+)$/i);                                 if (m) return Number(m[1]);
       }
       return NaN;
     }
 
-    // 找“桌号/board/table/台号”列，用于首屏排序；找不到返回 -1
-    function findTableIndex(headerRaw){
-      const norm = s => trim(s).toLowerCase().replace(/\s+/g,'');
-      for (let i=0;i<headerRaw.length;i++){
-        const h = norm(headerRaw[i]);
-        if (h.includes('桌号') || h === 'table' || h === 'board' || h === '台号') return i;
-      }
-      return -1;
+    function updateTitle(){
+      const useRound =
+        (Number.isFinite(roundParam) && roundParam > 0) ? roundParam :
+        (Number.isFinite(roundFromHeader) && roundFromHeader > 0) ? roundFromHeader :
+        null;
+      roundTitle.textContent = (useRound != null)
+        ? `第 ${useRound} 轮对阵信息`
+        : `对阵信息（Live）`;
     }
 
-    function buildHeader(headerRaw){
-      theadRow.innerHTML = "";
-      headerRaw.forEach(raw => {
-        const th = document.createElement("th");
-        th.textContent = trim(raw);        // 空就保持空白，不显示 Col#
-        theadRow.appendChild(th);
-      });
+    /* 供排序的桌号取值（A 列），尽量转为数字比较 */
+    function parseTableNo(row){
+      const raw = (row[COL_INDEX.table] ?? "").toString();
+      const num = Number(raw.replace(/[^\d.-]/g,''));
+      return Number.isFinite(num) ? num : raw;
     }
 
-    function createRow(headerRaw, row){
+    function buildRow(row){
       const tr = document.createElement("tr");
-      const id = row.join("|") || `${Date.now()}-${Math.random()}`; // 以整行内容拼作 ID
+      // 用关键列拼接为稳定ID
+      const id = [
+        row[COL_INDEX.table], row[COL_INDEX.p1Id], row[COL_INDEX.p1Nm],
+        row[COL_INDEX.p2Id], row[COL_INDEX.p2Nm]
+      ].map(v=>trim(v)).join("|") || `${Date.now()}-${Math.random()}`;
       tr.dataset.id = id;
-      headerRaw.forEach((_, idx) => {
+
+      const cells = [
+        row[COL_INDEX.table],
+        row[COL_INDEX.p1Id],
+        row[COL_INDEX.p1Nm],
+        "VS", // 固定常量
+        row[COL_INDEX.p2Id],
+        row[COL_INDEX.p2Nm]
+      ];
+
+      cells.forEach((v, idx)=>{
         const td = document.createElement("td");
-        const v = row[idx];
         td.textContent = (v==null || v==="") ? "—" : String(v);
-        td.dataset.col = String(idx);
+        td.dataset.col = String(idx); // 0..5
         tr.appendChild(td);
       });
       return tr;
@@ -200,53 +217,28 @@
       Array.from(tbodyA.children).forEach(tr => tbodyB.appendChild(tr.cloneNode(true)));
     }
 
-    let headerRaw = [];
     let started = false;
     let pollTimer = null;
 
-    function updateTitle(){
-  const useRound =
-    (Number.isFinite(roundParam) && roundParam > 0) ? roundParam :
-    (Number.isFinite(roundFromHeader) && roundFromHeader > 0) ? roundFromHeader :
-    null;
-
-  roundTitle.textContent = (useRound != null)
-    ? `第 ${useRound} 轮对阵信息（直播）`
-    : `对阵信息（直播）`;
-}
-
-    function initialRender(_headerRaw, rows){
-      headerRaw = _headerRaw.slice();
-
-      // 每次（包括首渲）按表头提取轮次并更新标题
-      roundFromHeader = extractRoundFromHeader(headerRaw);
+    function initialRender(header, rows){
+      roundFromHeader = extractRoundFromHeader(header);
       updateTitle();
 
-      // 构建表头
-      buildHeader(headerRaw);
+      // 按桌号升序
+      rows.sort((a,b)=>{
+        const A = parseTableNo(a), B = parseTableNo(b);
+        if (typeof A === 'number' && typeof B === 'number') return A - B;
+        return String(A).localeCompare(String(B));
+      });
 
-      // ——首屏排序：若识别到“桌号/board/table”列，升序展示，让画面从 1 开始——
-      const tIdx = findTableIndex(headerRaw);
-      if (tIdx >= 0) {
-        rows.sort((a,b)=>{
-          const na = Number(String(a[tIdx]||'').replace(/[^\d.-]/g,'')); 
-          const nb = Number(String(b[tIdx]||'').replace(/[^\d.-]/g,''));
-          if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
-          return String(a[tIdx]||'').localeCompare(String(b[tIdx]||''));
-        });
-      }
-
-      // 构建表体
       tbodyA.innerHTML = ""; tbodyB.innerHTML = "";
-      rows.forEach(r => tbodyA.appendChild(createRow(headerRaw, r)));
+      rows.forEach(r => tbodyA.appendChild(buildRow(r)));
       ensureFillAndMirror();
 
-      // 一圈时长
       const doubled = Math.max(1, rows.length * 2);
       const durationSec = Math.min(MAX_DURATION, Math.max(MIN_DURATION, Math.round(doubled * PER_ROW_SEC)));
       scroller.style.setProperty('--duration-sec', durationSec + 's');
 
-      // ——首屏停留 & 从第一行开始——
       scroller.style.transform = 'translateY(0)';
       scroller.style.animationPlayState = 'paused';
       setTimeout(()=>{ scroller.style.animationPlayState = 'running'; }, FIRST_SCREEN_MS);
@@ -255,45 +247,51 @@
       lastUpdateEl.textContent = `上次更新：${ts()}`;
     }
 
-    // 行内补丁：更新所有副本（并保持与首屏相同的排序策略）
-    function patchRows(rows){
-      roundFromHeader = extractRoundFromHeader(headerRaw); // 保险：补丁时也保持标题正确
+    // 行内补丁：更新所有副本（按 6 列）
+    function patchRows(header, rows){
+      roundFromHeader = extractRoundFromHeader(header);
       updateTitle();
 
-      const tIdx = findTableIndex(headerRaw);
-      if (tIdx >= 0) {
-        rows.sort((a,b)=>{
-          const na = Number(String(a[tIdx]||'').replace(/[^\d.-]/g,'')); 
-          const nb = Number(String(b[tIdx]||'').replace(/[^\d.-]/g,''));
-          if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
-          return String(a[tIdx]||'').localeCompare(String(b[tIdx]||''));
-        });
-      }
+      rows.sort((a,b)=>{
+        const A = parseTableNo(a), B = parseTableNo(b);
+        if (typeof A === 'number' && typeof B === 'number') return A - B;
+        return String(A).localeCompare(String(B));
+      });
 
-      rows.forEach(row=>{
-        const id = row.join("|");
-        headerRaw.forEach((_, idx)=>{
-          const newVal = String(row[idx] ?? "—");
-          document.querySelectorAll(`tr[data-id="${CSS.escape(id)}"] td[data-col="${idx}"]`).forEach(td=>{
-            if (td.textContent !== newVal) td.textContent = newVal;
+      rows.forEach(r=>{
+        const id = [
+          r[COL_INDEX.table], r[COL_INDEX.p1Id], r[COL_INDEX.p1Nm],
+          r[COL_INDEX.p2Id], r[COL_INDEX.p2Nm]
+        ].map(v=>trim(v)).join("|");
+
+        const vals = [
+          r[COL_INDEX.table],
+          r[COL_INDEX.p1Id],
+          r[COL_INDEX.p1Nm],
+          "VS",
+          r[COL_INDEX.p2Id],
+          r[COL_INDEX.p2Nm]
+        ].map(v => (v==null || v==="") ? "—" : String(v));
+
+        document.querySelectorAll(`tr[data-id="${CSS.escape(id)}"]`).forEach(tr=>{
+          vals.forEach((nv, i)=>{
+            const td = tr.querySelector(`td[data-col="${i}"]`);
+            if (td && td.textContent !== nv) td.textContent = nv;
           });
         });
       });
+
       lastUpdateEl.textContent = `上次更新：${ts()}`;
     }
 
     async function loadAndPatch(){
       const payload = await fetchJSON(MATCHUPS_API);
-      const parsed  = parsePayload(payload);
-      const rawHeader = parsed.header;
-      const rows      = parsed.rows;
+      const parsed = parsePayload(payload);
+      const header = parsed.header;
+      const rows   = parsed.rows;
 
-      // ——每次拉取后都从表头解析轮次并更新标题——
-      roundFromHeader = extractRoundFromHeader(rawHeader);
-      updateTitle();
-
-      if (!started) initialRender(rawHeader, rows);
-      else          patchRows(rows);
+      if (!started) initialRender(header, rows);
+      else          patchRows(header, rows);
     }
 
     function startPolling(){
@@ -304,7 +302,7 @@
       }, POLL_MS);
     }
 
-    // 音乐键（事件同步）
+    // 音乐键
     window.addEventListener("DOMContentLoaded", ()=>{
       const audio = document.getElementById("bgm");
       const btn = document.getElementById("music-toggle");

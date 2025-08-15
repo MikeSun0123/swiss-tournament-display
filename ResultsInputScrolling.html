@@ -90,8 +90,8 @@
 
     // 列名映射（按你表头修饰）
     const headerMap = {
-      "Match_ID":"轮次-桌号","PlayerA_ID":"东西ID","PlayerA_Name":"东西姓名",
-      "PlayerB_ID":"南北ID","PlayerB_Name":"南北姓名","ScoreA":"东西得分","ScoreB":"南北得分"
+      "Match_ID":"轮次-桌号","PlayerA_ID":"东西 ID","PlayerA_Name":"东西 姓名",
+      "PlayerB_ID":"南北 ID","PlayerB_Name":"南北 姓名","ScoreA":"东西方级数","ScoreB":"南北方级数"
     };
 
     let headerKeys = [];
@@ -228,7 +228,7 @@
         patchRows(header, rows);
       }
 
-      document.getElementById("roundTitle").textContent = `第 ${round} 轮比赛结果（直播）`;
+      document.getElementById("roundTitle").textContent = `第 ${round} 轮比赛结果（Live）`;
     }
 
     function startPolling(){
