@@ -6,17 +6,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
   <style>
     :root{
-      --duration-sec: 180s;          /* 根据行数会被脚本重设（两栏同步） */
-      --font-base: clamp(14px, 3.5vw, 18px);
-      --font-header: clamp(16px, 4vw, 20px);
+      /* 自适应小字体（可放大查看） */
+      --font-base:   clamp(10px, 2.6vw, 16px);  /* 数据行 */
+      --font-header: clamp(12px, 3vw, 18px);    /* 表头/标题 */
+      --duration-sec: 180s;                     /* 根据行数会被脚本重设（两栏同步） */
       --row-pad: 8px;
       --banner-h: 64px;
-      --viewport-h: 60vh;            /* 手机上用视口高度，便于放大缩小 */
+      --viewport-h: 60vh;                       /* 手机上用视口高度，便于放大缩小 */
       --gap: 6px;
     }
+
     body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:10px; }
     #banner { display:block; margin:0 auto 6px; max-width:100%; height:var(--banner-h); object-fit:contain; }
-    h1 { text-align:center; color:#00ffcc; font-size:var(--font-header); margin:6px 0 10px; }
+    h1 { text-align:center; color:#00ffcc; font-size:var(--font-header); font-weight:700; margin:6px 0 10px; }
 
     .status { position:fixed; top:8px; right:8px; display:flex; gap:6px; align-items:center; font-size:.85em; z-index:5; }
     .dot { width:8px; height:8px; border-radius:50%; background:#555; }
@@ -28,10 +30,7 @@
     #scroll-toggle{ background:#2563eb; }
 
     /* —— 两栏布局 —— */
-    .columns{
-      display:flex; gap:var(--gap);
-      align-items:stretch;
-    }
+    .columns{ display:flex; gap:var(--gap); align-items:stretch; }
     .col{
       flex:1; min-width:0;
       display:flex; flex-direction:column;
@@ -40,10 +39,10 @@
     }
 
     /* 固定表头（每栏各一份） */
-    .fixed-header table{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:var(--font-base); }
+    .fixed-header table{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:var(--font-header); }
     .fixed-header th{
       padding:8px; background:#1c1c1c; border-bottom:2px solid #00ffcc; text-align:center;
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:700;
     }
 
     /* 滚动视窗/滚动体（每栏各一份） */
@@ -57,22 +56,23 @@
 
     table.live{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:var(--font-base); }
 
-    /* 默认：单行省略（桌号/ID/VS） */
+    /* 默认：单行省略（桌号/ID/VS 等短字段） */
     td{
       padding:var(--row-pad); text-align:center; border-bottom:1px solid #2a2a2a;
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      line-height:1.35;
     }
     tr:nth-child(even){ background:#101010; } tr:nth-child(odd){ background:#070707; }
 
-    /* 仅姓名列（第3、6列）允许换行，多行显示 */
+    /* 仅姓名列（第3、6列）允许换行，多行显示（不丢信息） */
     .fixed-header th:nth-child(3),
     .fixed-header th:nth-child(6),
     table.live td:nth-child(3),
     table.live td:nth-child(6){
-      white-space:pre-wrap;     /* 保留数据中的换行，必要时自动换行 */
+      white-space:normal;       /* 允许自动换行 */
       word-break:break-word;    /* 英文/拼音长串也可断开 */
       overflow:visible; text-overflow:clip;
-      line-height:1.25; vertical-align:middle;
+      line-height:1.35; vertical-align:middle;
     }
 
     .toolbar{ text-align:center; font-size:.9em; opacity:.85; margin-top:6px; }
